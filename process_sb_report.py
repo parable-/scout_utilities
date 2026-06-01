@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import csv
 import os
 import re
 import sys
@@ -61,7 +62,7 @@ class PlotScoutAdvancement:
         'do on outings': {
             'Scout':        set(),
             'Tenderfoot':   {'1b', '1c', '2a', '2b', '3d', '7a'},
-            'Second Class': {'1b', '1c', '2b', '2c', '2d', '2e', '3b', '3d' '4', '5b', '5c', '8a'},
+            'Second Class': {'1b', '1c', '2b', '2c', '2d', '2e', '3b', '3d', '4', '5b', '5c', '8a'},
             'First Class':  {'1a', '1b', '2d', '2e', '3d', '4a', '4b', '5a', '6a', '6c', '6d', '6e', '9c'},
             'Star Scout':   {},
             'Life Scout':   {},
@@ -75,13 +76,13 @@ class PlotScoutAdvancement:
         # Check the file.
         self.csv_file = csv_file
         self.obscure_names = obscure_names
-        assert os.path.isfile(csv_file), \
-            f'[ERROR] Can\'t find file "{self.csv_file}".'
+        if not os.path.isfile(csv_file):
+            raise FileNotFoundError(f'Can\'t find file "{self.csv_file}".')
 
         # Get the report date.
-        match = re.search('(?P<year>\d\d\d\d)(?P<month>\d\d)(?P<day>\d\d)', csv_file)
-        assert match, \
-            f'ERROR Couldn\'t get report date from "{csv_file}".'
+        match = re.search(r'(?P<year>\d\d\d\d)(?P<month>\d\d)(?P<day>\d\d)', csv_file)
+        if not match:
+            raise ValueError(f'Couldn\'t get report date from "{csv_file}".')
         self.report_date = (match.group('year'), match.group('month'), match.group('day'))
 
     # Assumes the CSV file was created with these options in ScoutBook.
@@ -104,13 +105,13 @@ class PlotScoutAdvancement:
         current_rank = None
         self.data_dict = dict()
         self.req_check = dict()
-        with open(self.csv_file, 'r') as dF:
-            for index, line in enumerate(dF):
-                line_tokens = re.sub('"', '', line.strip()).split(',')
+        with open(self.csv_file, 'r', newline='') as dF:
+            for index, raw_tokens in enumerate(csv.reader(dF)):
+                line_tokens = [t.strip() for t in raw_tokens]
 
                 # Check for version line.
-                match_version_line = re.search('(?P<rank>.*) (?P<version>v\d\d\d\d)', line_tokens[0])
-                match_req_line = re.match('(?P<req>\d+[a-z]?)\.', line_tokens[0])
+                match_version_line = re.search(r'(?P<rank>.*) (?P<version>v\d\d\d\d)', line_tokens[0])
+                match_req_line = re.match(r'(?P<req>\d+[a-z]?)\.', line_tokens[0])
 
                 # Names are in the first line.
                 if index == 0:
@@ -179,7 +180,7 @@ class PlotScoutAdvancement:
                         self.req_check[scout_rank] = dict()
                     if req_status[0] not in self.req_check[scout_rank]:
                         self.req_check[scout_rank][req_status[0]] = list()
-                    self.req_check[scout_rank][req_status[0]].append(re.sub(req_status[0] + '\. ', '', line_tokens[0].strip()))
+                    self.req_check[scout_rank][req_status[0]].append(re.sub(req_status[0] + r'\. ', '', line_tokens[0].strip()))
 
         # Remove scouts that have aged out.
         for scout_name in aged_out:
@@ -225,7 +226,7 @@ class PlotScoutAdvancement:
 
                 # Create string for when rank was awarded.
                 if 'award' in self.data_dict[scout_name][scout_rank] and \
-                   re.match('\d+/\d+/\d+', self.data_dict[scout_name][scout_rank]['award']):
+                   re.match(r'\d+/\d+/\d+', self.data_dict[scout_name][scout_rank]['award']):
                     rank_data.append(f'completed {self.data_dict[scout_name][scout_rank]["award"]}')
                     rank_award = True
 
@@ -322,7 +323,7 @@ class PlotScoutAdvancement:
                     # Color the requirement if it is awarded or scout is past that rank or is time limiting.
                     fill_color = None
                     outline_color = None
-                    if self.data_dict[scout_name][scout_rank]['reqs'][index_req][1]: fill_color = 'palegreen'
+                    if req_spec[1]: fill_color = 'palegreen'
  
                     # If the requirement is not completed, add other colors or outlines.
                     else:
@@ -512,18 +513,20 @@ class PlotScoutAdvancement:
         # Add the scout names.
         col_offset = margin_pix
         row_offset = 2 * 1.5 * margin_pix
-        for index, scout_name in enumerate(sorted(self.data_dict)):
+        for index, real_name in enumerate(sorted(self.data_dict)):
 
-            # Obscure data.
+            # Choose display values, obscuring if requested.
             if self.obscure_names:
-                scout_name = f'SCOUT NAME {index}'
+                display_name = f'SCOUT NAME {index}'
                 scout_age = '##'
+            else:
+                display_name = real_name
+                scout_age = f'{self.data_dict[real_name]["age"]}'
 
             # Add scout name.
-            draw_image.text((col_offset, row_offset + index * line_pix), scout_name, font=line_font, fill='black')
+            draw_image.text((col_offset, row_offset + index * line_pix), display_name, font=line_font, fill='black')
 
             # Add scout age.
-            scout_age = f'{self.data_dict[scout_name]["age"]}'
             draw_image.text((col_offset + sum(max_col_widths[:7]) * char_width, row_offset + index * line_pix), scout_age, font=line_font, fill='black')
 
 
